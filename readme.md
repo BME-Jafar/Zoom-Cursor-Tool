@@ -2,7 +2,7 @@
 
 An interactive magnification tool for MATLAB figures that displays a real-time zoomed view of your signals as you move your cursor. Perfect for detailed signal inspection, data analysis, and exploratory visualization.
 
-![image](imgs\3.png)
+![image](imgs/3.png)
 
 ![MATLAB](https://img.shields.io/badge/MATLAB-R2016b%2B-orange)
 ![License](https://img.shields.io/badge/license-MIT-blue)
@@ -113,12 +113,12 @@ tool.BoxSize = 1.0;  % Set initial box size in data units
 ### Box Mode (Default)
 Zooms both X and Y axes to show exactly what's inside the red box. Perfect for detailed inspection of specific regions.
 
-![image](imgs\1.png)
+![image](imgs/1.png)
 
 ### X-Only Mode
 Zooms only the X axis while auto-scaling Y to show the full amplitude range. Ideal for time-series analysis.
 
-![image](imgs\2.png)
+![image](imgs/2.png)
 
 ## Box Orientations
 
@@ -126,47 +126,8 @@ Zooms only the X axis while auto-scaling Y to show the full amplitude range. Ide
 - **Landscape** (2:1): Wide view, excellent for horizontal signal features
 - **Portrait** (1:2): Tall view, great for examining amplitude variations
 
-## Examples
 
-### Example 1: ECG Signal Analysis
-```matlab
-% Load and plot ECG data
-load('ecg.mat');
-figure;
-plot(ecg);
-title('ECG Signal');
-xlabel('Sample');
-ylabel('Amplitude');
-grid on;
-
-% Activate zoom tool
-tool = ZoomCursorTool(gcf);
-
-% Press X for X-only mode to see full amplitude range
-% Press R to switch to landscape for wider time view
-```
-
-### Example 2: Multiple Sensor Comparison
-```matlab
-% Simulate multiple sensor data
-t = linspace(0, 100, 5000);
-sensor1 = sin(0.1*t) + 0.1*randn(size(t));
-sensor2 = cos(0.1*t) + 0.1*randn(size(t));
-sensor3 = sin(0.2*t) + cos(0.15*t) + 0.1*randn(size(t));
-
-figure;
-plot(t, sensor1, 'b-', t, sensor2, 'r-', t, sensor3, 'g-');
-legend('Sensor 1', 'Sensor 2', 'Sensor 3');
-xlabel('Time (s)');
-ylabel('Voltage (V)');
-title('Multi-Sensor Data');
-grid on;
-
-% All three signals will appear in zoom window
-tool = ZoomCursorTool(gcf);
-```
-
-### Example 3: Noisy Signal Detail Inspection
+### Example
 ```matlab
 % Generate signal with interesting features
 t = linspace(0, 50, 10000);
@@ -184,27 +145,6 @@ grid on;
 tool = ZoomCursorTool(gcf);
 % Try Box mode to zoom in on specific features
 % Use arrow keys to adjust magnification level
-```
-
-## Methods
-
-### Public Methods
-
-```matlab
-tool.activate()      % Reactivate the tool after deactivation
-tool.deactivate()    % Deactivate the tool
-tool.rotateBox()     % Programmatically rotate box orientation
-tool.toggleZoomMode()% Programmatically toggle zoom mode
-```
-
-### Properties
-
-```matlab
-tool.BoxSize          % Get/set box size in data units
-tool.BoxOrientation   % Current orientation: 'square', 'landscape', 'portrait'
-tool.BoxAspectRatio   % Current aspect ratio (read-only)
-tool.ZoomMode         % Current mode: 'box' or 'xonly'
-tool.IsActive         % Tool activation state
 ```
 
 ## Requirements
