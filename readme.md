@@ -39,7 +39,7 @@ git clone https://github.com/yourusername/zoom-cursor-tool.git
 cd zoom-cursor-tool
 ```
 
-### Option 3: Install as Toolbox (if packaged)
+### Option 3: Install as Toolbox
 Double-click the `.mltbx` file or use:
 ```matlab
 matlab.addons.install('ZoomCursorTool.mltbx')
