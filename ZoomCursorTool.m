@@ -1,6 +1,8 @@
 classdef ZoomCursorTool < handle
     % ZoomCursorTool - Interactive zoom tool for MATLAB figures
     % Displays a magnified view of the signal under the cursor
+    % you can activate it after creating a figure with a 2D plot 
+    % tool = ZoomCursorTool(gcf);
     
     properties
         MainFigure          % Main figure handle
