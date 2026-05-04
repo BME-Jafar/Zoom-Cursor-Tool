@@ -181,3 +181,21 @@ If you use this tool in your research, please cite:
 
 
 ⭐ **Star this repo** if you find it useful!
+
+## Measurement cursors
+
+This version also supports two measurement crosshair cursors in the zoomed plot.
+
+Keyboard controls:
+
+- `M`: toggle measurement mode on/off.
+- Click inside the zoomed window: place measurement cursor 1 and cursor 2.
+- After two cursors are placed, the zoomed plot displays `dx`, `dy`, `|dx|`, `|dy|`, and Euclidean distance.
+- `C`: clear the measurement cursors.
+
+When a complete two-cursor measurement already exists, the next click starts a new measurement pair.
+
+
+### Measurement mode note
+
+Measurement mode freezes the current zoomed view so you can move the mouse into the zoom window and place two crosshair cursors without changing the displayed region. The dx/dy annotation is drawn with black text for visibility on the default white axes background.
