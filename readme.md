@@ -99,15 +99,18 @@ tool.BoxSize = 1.0;  % Set initial box size in data units
 
 ## Keyboard Controls
 
-| Key | Action |
-|-----|--------|
-| **↑** (Up Arrow) | Increase zoom box size |
-| **↓** (Down Arrow) | Decrease zoom box size |
-| **R** | Rotate box orientation (Square → Landscape → Portrait) |
-| **X** | Toggle zoom mode (Box ↔ X-Only) |
-| **ESC** | Deactivate the tool |
-| **Click** | Print cursor coordinates to console |
-
+| Key / Action | Function |
+|---|---|
+| Mouse move | Update the zoomed view around the cursor |
+| Mouse click on main plot | Print cursor coordinates in the MATLAB command window |
+| Up arrow | Increase zoom box size |
+| Down arrow | Decrease zoom box size |
+| `R` | Rotate zoom box orientation: square, landscape, portrait |
+| `X` | Toggle between box zoom and x-only zoom |
+| `M` | Freeze/unfreeze the zoomed view and toggle measurement mode |
+| Click inside zoom window while measurement mode is active | Place measurement cursor 1 and cursor 2 |
+| `C` | Clear measurement cursors |
+| `ESC` | Deactivate the tool |
 ## Zoom Modes
 
 ### Box Mode (Default)
@@ -182,20 +185,20 @@ If you use this tool in your research, please cite:
 
 ⭐ **Star this repo** if you find it useful!
 
-## Measurement cursors
+## Version history
 
-This version also supports two measurement crosshair cursors in the zoomed plot.
+### v1.1.0
 
-Keyboard controls:
+- Added two-point measurement mode in the zoom window.
+- Press `M` to freeze/unfreeze the zoomed view and toggle measurement mode.
+- Added measurement crosshairs for selecting two points in the frozen zoom window.
+- Added automatic display of `dx`, `dy`, `|dx|`, `|dy|`, and Euclidean distance.
+- Hid the live red zoom cursor during measurement mode to avoid obstructing the view.
+- Improved figure axes detection during initialization.
+- Improved callback cleanup and restoration when deactivating the tool.
+- Improved robustness for plots containing `NaN` or `Inf` values.
+- Improved handling of multi-line plot order.
 
-- `M`: toggle measurement mode on/off.
-- Click inside the zoomed window: place measurement cursor 1 and cursor 2.
-- After two cursors are placed, the zoomed plot displays `dx`, `dy`, `|dx|`, `|dy|`, and Euclidean distance.
-- `C`: clear the measurement cursors.
+### v1.1.1
 
-When a complete two-cursor measurement already exists, the next click starts a new measurement pair.
-
-
-### Measurement mode note
-
-Measurement mode freezes the current zoomed view so you can move the mouse into the zoom window and place two crosshair cursors without changing the displayed region. The dx/dy annotation is drawn with black text for visibility on the default white axes background.
+- Bug fixed related to the measurment mode

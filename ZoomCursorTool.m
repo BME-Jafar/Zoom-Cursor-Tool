@@ -20,6 +20,13 @@ classdef ZoomCursorTool < handle
         BoxAspectRatio = 1  % Width/Height ratio (1 = square, >1 = landscape, <1 = portrait)
         ZoomMode = 'box'    % 'box' (zoom X and Y) or 'xonly' (zoom X, show all Y)
         IsActive = false    % Tool activation state
+        OriginalWindowButtonMotionFcn = [] % Previous mouse motion callback
+        OriginalKeyPressFcn = []           % Previous key press callback
+        OriginalWindowButtonDownFcn = []   % Previous mouse click callback
+        MeasurementMode = false             % Toggle for measurement cursor placement in zoom window
+        MeasurementPoints = zeros(0, 2)     % Up to two [x y] measurement cursor positions
+        MaxMeasurementPoints = 2            % Number of measurement cursors used for dx/dy
+        ZoomFrozenForMeasurement = false     % Freeze zoom view while placing measurement cursors
     end
     
     methods
@@ -29,11 +36,25 @@ classdef ZoomCursorTool < handle
                 error('ZoomCursorTool requires a figure handle');
             end
             
+            if ~ishandle(figHandle) || ~strcmp(get(figHandle, 'Type'), 'figure')
+                error('ZoomCursorTool requires a valid MATLAB figure handle');
+            end
+            
             obj.MainFigure = figHandle;
-            obj.MainAxes = gca(figHandle);
+            obj.MainAxes = get(figHandle, 'CurrentAxes');
+            
+            if isempty(obj.MainAxes) || ~ishandle(obj.MainAxes)
+                axesList = findobj(figHandle, 'Type', 'axes');
+                axesList = axesList(~strcmp(get(axesList, 'Tag'), 'legend'));
+                if isempty(axesList)
+                    error('No axes found in the figure');
+                end
+                obj.MainAxes = axesList(1);
+            end
             
             % Extract data from ALL line plots
             obj.AllPlotLines = findobj(obj.MainAxes, 'Type', 'line');
+            obj.AllPlotLines = flipud(obj.AllPlotLines(:));
             if isempty(obj.AllPlotLines)
                 error('No line plots found in the figure');
             end
@@ -68,6 +89,8 @@ classdef ZoomCursorTool < handle
             fprintf('Press UP/DOWN arrows to adjust box size\n');
             fprintf('Press R to rotate box (square/landscape/portrait)\n');
             fprintf('Press X to toggle zoom mode (box/X-only)\n');
+            fprintf('Press M to toggle measurement cursors in zoom window and freeze current zoom view\n');
+            fprintf('Press C to clear measurement cursors\n');
             fprintf('Press ESC to deactivate\n\n');
         end
         
@@ -86,7 +109,9 @@ classdef ZoomCursorTool < handle
                 'Position', [zoomX, zoomY, zoomWidth, zoomHeight], ...
                 'MenuBar', 'none', ...
                 'ToolBar', 'none', ...
-                'Color', [0.94 0.94 0.94]);
+                'Color', [0.94 0.94 0.94], ...
+                'WindowButtonDownFcn', @obj.onZoomMouseClick, ...
+                'KeyPressFcn', @obj.onKeyPress);
             
             % Create axes in zoom figure
             obj.ZoomAxes = axes('Parent', obj.ZoomFigure, ...
@@ -97,7 +122,7 @@ classdef ZoomCursorTool < handle
                 'LineWidth', 1.5, ...
                 'FontSize', 10);
             
-            title(obj.ZoomAxes, 'Magnified View', 'FontWeight', 'bold', 'FontSize', 12);
+            title(obj.ZoomAxes, 'Magnified View', 'FontWeight', 'bold', 'FontSize', 12, 'Color', [0 0 0]);
             xlabel(obj.ZoomAxes, 'X', 'FontSize', 10);
             ylabel(obj.ZoomAxes, 'Y', 'FontSize', 10);
             
@@ -125,6 +150,17 @@ classdef ZoomCursorTool < handle
         
         function setupCallbacks(obj)
             % Set up mouse motion and key press callbacks
+            % Save existing figure callbacks so they can be restored on deactivate.
+            if isempty(obj.OriginalWindowButtonMotionFcn)
+                obj.OriginalWindowButtonMotionFcn = get(obj.MainFigure, 'WindowButtonMotionFcn');
+            end
+            if isempty(obj.OriginalKeyPressFcn)
+                obj.OriginalKeyPressFcn = get(obj.MainFigure, 'KeyPressFcn');
+            end
+            if isempty(obj.OriginalWindowButtonDownFcn)
+                obj.OriginalWindowButtonDownFcn = get(obj.MainFigure, 'WindowButtonDownFcn');
+            end
+            
             set(obj.MainFigure, 'WindowButtonMotionFcn', @obj.onMouseMove);
             set(obj.MainFigure, 'KeyPressFcn', @obj.onKeyPress);
             set(obj.MainFigure, 'WindowButtonDownFcn', @obj.onMouseClick);
@@ -135,7 +171,13 @@ classdef ZoomCursorTool < handle
         
         function onMouseMove(obj, ~, ~)
             % Callback for mouse movement
-            if ~obj.IsActive || ~isvalid(obj.ZoomFigure)
+            if ~obj.IsActive || ~isgraphics(obj.ZoomFigure)
+                return;
+            end
+            
+            % When measurement mode is active, keep the current zoom view frozen
+            % so the user can move to the zoom window and click measurement points.
+            if obj.ZoomFrozenForMeasurement
                 return;
             end
             
@@ -153,7 +195,7 @@ classdef ZoomCursorTool < handle
                 % Hide cursor box when outside
                 obj.CursorBox.Visible = 'off';
                 cla(obj.ZoomAxes);
-                title(obj.ZoomAxes, 'Move cursor over main plot', 'FontSize', 11);
+                title(obj.ZoomAxes, 'Move cursor over main plot', 'FontSize', 11, 'Color', [0 0 0]);
                 return;
             end
             
@@ -248,7 +290,7 @@ classdef ZoomCursorTool < handle
                     yZoom = yData(idx);
                     
                     % Collect Y data for auto-scaling
-                    allYData = [allYData, yZoom];
+                    allYData = [allYData; yZoom(:)];
                     
                     % Get original line properties
                     lineColor = get(obj.AllPlotLines(i), 'Color');
@@ -270,15 +312,19 @@ classdef ZoomCursorTool < handle
             if ~hasData
                 % No data in zoom region
                 hold(obj.ZoomAxes, 'off');
-                title(obj.ZoomAxes, 'No data in zoom region', 'FontSize', 11);
+                title(obj.ZoomAxes, 'No data in zoom region', 'FontSize', 11, 'Color', [0 0 0]);
                 return;
             end
             
             % Set Y limits based on mode
             if strcmp(obj.ZoomMode, 'xonly')
                 % Auto-scale Y based on data in X range
-                yDataMin = min(allYData);
-                yDataMax = max(allYData);
+                finiteYData = allYData(isfinite(allYData));
+                if isempty(finiteYData)
+                    finiteYData = yCursor;
+                end
+                yDataMin = min(finiteYData);
+                yDataMax = max(finiteYData);
                 yRange = yDataMax - yDataMin;
                 if yRange < eps
                     yRange = 1;
@@ -288,15 +334,17 @@ classdef ZoomCursorTool < handle
                 yMax = yDataMax + yPadding;
             end
             
-            % Add crosshair at cursor position
-            % Vertical line at cursor X
-            plot(obj.ZoomAxes, [xCursor xCursor], [yMin yMax], 'r-', 'LineWidth', 1.5);
-            % Horizontal line at cursor Y
-            plot(obj.ZoomAxes, [xMin xMax], [yCursor yCursor], 'r-', 'LineWidth', 1.5);
+            % Add live crosshair at cursor position. The tag allows it to be
+            % hidden when measurement mode freezes the zoom view.
+            plot(obj.ZoomAxes, [xCursor xCursor], [yMin yMax], 'r-', ...
+                'LineWidth', 1.5, 'Tag', 'ZoomCursorToolLiveCursor');
+            plot(obj.ZoomAxes, [xMin xMax], [yCursor yCursor], 'r-', ...
+                'LineWidth', 1.5, 'Tag', 'ZoomCursorToolLiveCursor');
             
             % Mark the center point
             plot(obj.ZoomAxes, xCursor, yCursor, 'ro', 'MarkerSize', 8, ...
-                'MarkerFaceColor', 'r', 'LineWidth', 2);
+                'MarkerFaceColor', 'r', 'LineWidth', 2, ...
+                'Tag', 'ZoomCursorToolLiveCursor');
             
             hold(obj.ZoomAxes, 'off');
             
@@ -315,9 +363,10 @@ classdef ZoomCursorTool < handle
             modeStr = upper(obj.ZoomMode);
             title(obj.ZoomAxes, sprintf('X: %.3f, Y: %.3f | %s | %s (%.3f)', ...
                 xCursor, yCursor, modeStr, obj.BoxOrientation, obj.BoxSize), ...
-                'FontWeight', 'bold', 'FontSize', 10);
+                'FontWeight', 'bold', 'FontSize', 10, 'Color', [0 0 0]);
             
             grid(obj.ZoomAxes, 'on');
+            obj.drawMeasurementCursors(xMin, xMax, yMin, yMax);
             
             % Force update
             drawnow limitrate;
@@ -339,6 +388,10 @@ classdef ZoomCursorTool < handle
                 obj.rotateBox();
             elseif strcmp(event.Key, 'x') || strcmp(event.Key, 'X')
                 obj.toggleZoomMode();
+            elseif strcmp(event.Key, 'm') || strcmp(event.Key, 'M')
+                obj.toggleMeasurementMode();
+            elseif strcmp(event.Key, 'c') || strcmp(event.Key, 'C')
+                obj.clearMeasurementCursors();
             end
         end
         
@@ -371,6 +424,160 @@ classdef ZoomCursorTool < handle
             end
         end
         
+
+        function toggleMeasurementMode(obj)
+            % Toggle measurement mode for placing two cursors in the zoom window.
+            % When ON, freeze the current zoom view. This prevents the zoomed
+            % content from changing while the user moves from the main figure
+            % to the zoom figure to place measurement cursors.
+            obj.MeasurementMode = ~obj.MeasurementMode;
+            obj.ZoomFrozenForMeasurement = obj.MeasurementMode;
+            
+            if obj.MeasurementMode
+                if isgraphics(obj.ZoomAxes)
+                    % Hide the live red center crosshair while the frozen view is
+                    % used for measurement, so it does not obstruct the signal.
+                    delete(findobj(obj.ZoomAxes, 'Tag', 'ZoomCursorToolLiveCursor'));
+                    xlims = xlim(obj.ZoomAxes);
+                    ylims = ylim(obj.ZoomAxes);
+                    obj.drawMeasurementCursors(xlims(1), xlims(2), ylims(1), ylims(2));
+                    title(obj.ZoomAxes, 'Frozen Measurement View: click two points in this window', ...
+                        'FontWeight', 'bold', 'FontSize', 10, 'Color', [0 0 0]);
+                end
+                fprintf('Measurement mode ON: zoom view frozen and live red cursor hidden. Click in the zoom window to place cursor 1 and cursor 2. Press M again to unfreeze, or C to clear.\n');
+            else
+                if isgraphics(obj.ZoomAxes)
+                    delete(findobj(obj.ZoomAxes, 'Tag', 'ZoomCursorToolMeasurement'));
+                end
+                fprintf('Measurement mode OFF: live zoom resumed.\n');
+            end
+        end
+        
+        function clearMeasurementCursors(obj)
+            % Clear measurement cursors and annotation
+            obj.MeasurementPoints = zeros(0, 2);
+            if isgraphics(obj.ZoomAxes)
+                % Keep the currently plotted zoom view; the cursors will also be removed
+                % on the next mouse-move update because the axes are redrawn.
+                delete(findobj(obj.ZoomAxes, 'Tag', 'ZoomCursorToolMeasurement'));
+            end
+            if obj.MeasurementMode && isgraphics(obj.ZoomAxes)
+                xlims = xlim(obj.ZoomAxes);
+                ylims = ylim(obj.ZoomAxes);
+                obj.drawMeasurementCursors(xlims(1), xlims(2), ylims(1), ylims(2));
+            end
+            fprintf('Measurement cursors cleared.\n');
+        end
+        
+        function onZoomMouseClick(obj, ~, ~)
+            % Place measurement cursors by clicking inside the zoomed axes
+            if ~obj.IsActive || ~obj.MeasurementMode || ~isgraphics(obj.ZoomAxes)
+                return;
+            end
+            
+            pt = get(obj.ZoomAxes, 'CurrentPoint');
+            xClick = pt(1, 1);
+            yClick = pt(1, 2);
+            
+            xlims = xlim(obj.ZoomAxes);
+            ylims = ylim(obj.ZoomAxes);
+            if xClick < xlims(1) || xClick > xlims(2) || ...
+               yClick < ylims(1) || yClick > ylims(2)
+                return;
+            end
+            
+            if size(obj.MeasurementPoints, 1) >= obj.MaxMeasurementPoints
+                % Start a new two-point measurement after the previous pair is complete.
+                obj.MeasurementPoints = zeros(0, 2);
+            end
+            obj.MeasurementPoints(end+1, :) = [xClick, yClick];
+            
+            fprintf('Measurement cursor %d: X = %.6g, Y = %.6g\n', ...
+                size(obj.MeasurementPoints, 1), xClick, yClick);
+            
+            if size(obj.MeasurementPoints, 1) == 2
+                dx = obj.MeasurementPoints(2, 1) - obj.MeasurementPoints(1, 1);
+                dy = obj.MeasurementPoints(2, 2) - obj.MeasurementPoints(1, 2);
+                dist = hypot(dx, dy);
+                fprintf('Measurement: dx = %.6g, dy = %.6g, |dx| = %.6g, |dy| = %.6g, distance = %.6g\n', ...
+                    dx, dy, abs(dx), abs(dy), dist);
+            end
+            
+            obj.drawMeasurementCursors(xlims(1), xlims(2), ylims(1), ylims(2));
+        end
+        
+        function drawMeasurementCursors(obj, xMin, xMax, yMin, yMax)
+            % Draw persistent measurement cursors in the zoom axes
+            if ~isgraphics(obj.ZoomAxes)
+                return;
+            end
+            
+            delete(findobj(obj.ZoomAxes, 'Tag', 'ZoomCursorToolMeasurement'));
+            
+            if isempty(obj.MeasurementPoints)
+                if obj.MeasurementMode
+                    text(obj.ZoomAxes, 0.02, 0.98, 'Measurement ON: click two points', ...
+                        'Units', 'normalized', ...
+                        'VerticalAlignment', 'top', ...
+                        'Color', [0 0 0], ...
+                        'BackgroundColor', [1 1 1], ...
+                        'Margin', 4, ...
+                        'FontSize', 9, ...
+                        'Tag', 'ZoomCursorToolMeasurement');
+                end
+                return;
+            end
+            
+            wasHold = ishold(obj.ZoomAxes);
+            hold(obj.ZoomAxes, 'on');
+            colors = [0 0.4470 0.7410; 0.4660 0.6740 0.1880];
+            labels = {'1', '2'};
+            
+            for k = 1:size(obj.MeasurementPoints, 1)
+                x = obj.MeasurementPoints(k, 1);
+                y = obj.MeasurementPoints(k, 2);
+                color = colors(min(k, size(colors,1)), :);
+                
+                plot(obj.ZoomAxes, [x x], [yMin yMax], '--', ...
+                    'Color', color, 'LineWidth', 1.4, 'Tag', 'ZoomCursorToolMeasurement');
+                plot(obj.ZoomAxes, [xMin xMax], [y y], '--', ...
+                    'Color', color, 'LineWidth', 1.4, 'Tag', 'ZoomCursorToolMeasurement');
+                plot(obj.ZoomAxes, x, y, 'o', ...
+                    'Color', color, 'MarkerFaceColor', color, 'MarkerSize', 7, ...
+                    'LineWidth', 1.2, 'Tag', 'ZoomCursorToolMeasurement');
+                text(obj.ZoomAxes, x, y, ['  C' labels{k}], ...
+                    'Color', color, 'FontWeight', 'bold', 'FontSize', 9, ...
+                    'VerticalAlignment', 'bottom', 'Tag', 'ZoomCursorToolMeasurement');
+            end
+            
+            if size(obj.MeasurementPoints, 1) == 1
+                infoStr = sprintf('C1: X = %.6g, Y = %.6g\nClick second point for dx/dy', ...
+                    obj.MeasurementPoints(1,1), obj.MeasurementPoints(1,2));
+            else
+                p1 = obj.MeasurementPoints(1, :);
+                p2 = obj.MeasurementPoints(2, :);
+                dx = p2(1) - p1(1);
+                dy = p2(2) - p1(2);
+                dist = hypot(dx, dy);
+                infoStr = sprintf('dx = %.6g   dy = %.6g\n|dx| = %.6g   |dy| = %.6g\ndistance = %.6g', ...
+                    dx, dy, abs(dx), abs(dy), dist);
+            end
+            
+            text(obj.ZoomAxes, 0.02, 0.98, infoStr, ...
+                'Units', 'normalized', ...
+                'VerticalAlignment', 'top', ...
+                'Color', [0 0 0], ...
+                'BackgroundColor', [1 1 1], ...
+                'EdgeColor', [0.2 0.2 0.2], ...
+                'Margin', 5, ...
+                'FontSize', 9, ...
+                'Tag', 'ZoomCursorToolMeasurement');
+            
+            if ~wasHold
+                hold(obj.ZoomAxes, 'off');
+            end
+        end
+        
         function onMouseClick(obj, ~, ~)
             % Print cursor position on click
             if ~obj.IsActive
@@ -393,7 +600,7 @@ classdef ZoomCursorTool < handle
         function onZoomFigureClose(obj, ~, ~)
             % Handle zoom figure being closed
             obj.deactivate();
-            if isvalid(obj.ZoomFigure)
+            if isgraphics(obj.ZoomFigure)
                 delete(obj.ZoomFigure);
             end
         end
@@ -401,14 +608,17 @@ classdef ZoomCursorTool < handle
         function deactivate(obj)
             % Deactivate the tool
             obj.IsActive = false;
-            if isvalid(obj.CursorBox)
+            obj.MeasurementMode = false;
+            obj.ZoomFrozenForMeasurement = false;
+            if isgraphics(obj.CursorBox)
                 obj.CursorBox.Visible = 'off';
             end
             
             % Remove callbacks
-            if isvalid(obj.MainFigure)
-                set(obj.MainFigure, 'WindowButtonMotionFcn', '');
-                set(obj.MainFigure, 'KeyPressFcn', '');
+            if isgraphics(obj.MainFigure)
+                set(obj.MainFigure, 'WindowButtonMotionFcn', obj.OriginalWindowButtonMotionFcn);
+                set(obj.MainFigure, 'KeyPressFcn', obj.OriginalKeyPressFcn);
+                set(obj.MainFigure, 'WindowButtonDownFcn', obj.OriginalWindowButtonDownFcn);
             end
             
             %fprintf('\n=== Zoom Cursor Tool Deactivated ===\n');
@@ -416,20 +626,20 @@ classdef ZoomCursorTool < handle
         
         function activate(obj)
             % Reactivate the tool
-            if ~isvalid(obj.ZoomFigure)
+            if ~isgraphics(obj.ZoomFigure)
                 obj.createZoomFigure();
             end
-            obj.IsActive = true;
             obj.setupCallbacks();
+            obj.IsActive = true;
             %fprintf('\n=== Zoom Cursor Tool Activated ===\n');
         end
         
         function delete(obj)
             % Destructor - clean up
-            if isvalid(obj.ZoomFigure)
+            if isgraphics(obj.ZoomFigure)
                 delete(obj.ZoomFigure);
             end
-            if isvalid(obj.CursorBox)
+            if isgraphics(obj.CursorBox)
                 delete(obj.CursorBox);
             end
         end
